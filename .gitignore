@@ -1,0 +1,70 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.cover
+htmlcov/
+
+# --- Node / Vite ---
+node_modules/
+frontend/dist/
+frontend/build/
+*.tsbuildinfo
+.vite/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# --- Tauri / Rust ---
+frontend/src-tauri/target/
+frontend/src-tauri/Cargo.lock
+*.ipa
+*.apk
+.DS_Store
+
+# --- App runtime data (NEVER commit evidence or keys) ---
+.svetovid/
+*.svetovid/
+cases/
+evidence/
+results/
+output/
+*.raw
+*.mem
+*.pcap
+*.pcapng
+*.E01
+*.e01
+*.vmdk
+*.qcow2
+*.aff4
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+config.local.json
+
+# --- Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS ---
+Thumbs.db
+desktop.ini

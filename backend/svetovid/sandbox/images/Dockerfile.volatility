@@ -1,0 +1,56 @@
+# svetovid/volatility — Volatility 3 memory forensics image.
+#
+# Provides:
+#   - Volatility 3 (latest stable via pip)
+#   - Symbol tables for Windows 10/11 + Server 2016/2019/2022
+#   - WinPmem acquisition binary (for completeness; agent rarely acquires in-container)
+#
+# Evidence (memory image) mounts at /evidence:ro; output at /work:rw.
+# Vol3 is RAM-hungry — the harness runs this image with mem_limit=8g.
+
+ARG BASE_TAG=latest
+FROM svetovid/base:${BASE_TAG}
+
+# ---- Volatility 3 ----
+# Install via pip into the system python. Pulls in capstone, pe-tree, etc.
+RUN pip3 install --break-system-packages volatility3 && \
+    vol --version 2>&1 | head -1
+
+# ---- Symbol tables ----
+# Vol3 needs ISF (Intermediate Symbol Format) JSON files to parse a given OS
+# build. We try to bundle the official Velocidex symbol pack; if the clone
+# fails (rate limit, branch rename) we ship empty and the agent supplies
+# symbols via a volume mount at runtime.
+RUN set -e; \
+    mkdir -p /opt/vol3symbols && \
+    (git clone --depth=1 https://github.com/Velocidex/volatility3-symbols.git /tmp/volsym \
+        && cp /tmp/volsym/*.json.xz /opt/vol3symbols/ 2>/dev/null \
+        && cp /tmp/volsym/*.json /opt/vol3symbols/ 2>/dev/null \
+        && cd /opt/vol3symbols && for f in *.json.xz; do [ -f "$f" ] && xz -dk "$f"; done \
+        && rm -rf /tmp/volsym \
+        && echo "bundled $(ls /opt/vol3symbols/*.json 2>/dev/null | wc -l) symbol files") \
+    || echo "no bundled symbols; supply via -v /path/to/symbols:/opt/vol3symbols:ro"; \
+    true
+
+# Point Vol3 at our symbol path.
+ENV VOL3_SYMBOL_PATHS=/opt/vol3symbols
+
+# ---- WinPmem (acquisition; included for the G06/G20 goals) ----
+# Prebuilt binary; agent uses this only if it needs to acquire inside the container
+# (unusual — acquisition is usually on the endpoint).
+ARG TARGETARCH
+RUN case "$TARGETARCH" in \
+        amd64) URL="https://github.com/Velocidex/WinPmem/releases/download/v4.0.rc1/winpmem_4.0.rc1_x86_64.deb" ;; \
+        arm64) URL="https://github.com/Velocidex/WinPmem/releases/download/v4.0.rc1/winpmem_4.0.rc1_aarch64.deb" ;; \
+    esac; \
+    curl -fsSL -o /tmp/winpmem.deb "$URL" 2>/dev/null && dpkg -i /tmp/winpmem.deb 2>/dev/null && rm /tmp/winpmem.deb || \
+    echo "winpmem not installed (architecture or download issue; acquisition via host only)"
+
+WORKDIR /work
+
+RUN echo "=== volatility image ready ===" \
+    && vol --version 2>&1 | head -1 \
+    && ls /opt/vol3symbols/*.json 2>/dev/null | head -3 \
+    && echo "ATT&CK bundle: $(jq '.objects | length' /opt/attack/enterprise-attack.json) objects"
+
+CMD ["bash"]

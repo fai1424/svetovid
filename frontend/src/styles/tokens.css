@@ -1,0 +1,85 @@
+/* Svetovid design tokens — generated from frontend/design-system/MASTER.md
+ * (Dark Data-Dense Dashboard · JetBrains Mono · dark navy + green accent)
+ *
+ * Every color in the app reads through one of these variables. No raw hex
+ * anywhere else. To retheme (e.g. high-contrast variant) edit this file only.
+ */
+
+:root {
+  /* ---- Surface palette (full dark per MASTER.md) ---- */
+  --color-background: #020617;        /* near-black, OLED-friendly */
+  --color-foreground: #f8fafc;        /* slate-50 */
+
+  --color-surface: #0f172a;           /* primary panels */
+  --color-surface-fg: #f8fafc;
+  --color-muted: #1a1e2f;             /* recessed areas (trace rows, etc.) */
+  --color-muted-fg: #94a3b8;          /* slate-400 — secondary text */
+  --color-border: #334155;            /* slate-700 — hairline rules */
+
+  /* ---- Brand + actions ---- */
+  --color-primary: #0f172a;
+  --color-on-primary: #f8fafc;
+  --color-secondary: #1e293b;         /* slate-800 */
+  --color-on-secondary: #f8fafc;
+  --color-accent: #16a34a;            /* green-600 — the one bold color */
+  --color-on-accent: #052e16;         /* green-950 — high-contrast text on accent */
+  --color-destructive: #dc2626;       /* red-600 — failed tool calls */
+  --color-on-destructive: #fef2f2;
+  --color-ring: #16a34a;              /* focus ring uses accent, not primary */
+
+  /* ---- Status semantics (the three statuses users actually track) ---- */
+  --color-status-pending: #f59e0b;    /* amber-500 — queued / awaiting */
+  --color-status-running: #16a34a;    /* green-600 — in-flight */
+  --color-status-done: #22c55e;       /* green-500 — completed */
+  --color-status-failed: #dc2626;     /* red-600 — error */
+  --color-status-skipped: #64748b;    /* slate-500 — bypassed */
+
+  /* ---- Type ---- */
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* ---- Radii (disciplined — forensic/clinical, not playful) ---- */
+  --radius-sm: 0.125rem;
+  --radius: 0.1875rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+
+  /* ---- Shadows (lifted from MASTER.md, slightly stronger for dark theme) ---- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.45);
+}
+
+/* WCAG: respect reduced motion globally */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Visible focus ring on every interactive element (a11y §1) */
+*:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+/* Scrollbars — subtle, on-theme */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

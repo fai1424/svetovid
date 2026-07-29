@@ -1,0 +1,91 @@
+# svetovid/network — network forensics toolkit image.
+#
+# Provides:
+#   - tshark     (Wireshark CLI) — protocol summary + per-protocol field
+#                                     extraction from PCAP/PCAPNG
+#   - Zeek       (formerly Bro)  — connection/DNS/file/logon metadata in
+#                                     tab-separated (or JSON) log files
+#   - Suricata                    — IDS / signature engine; emits eve.json
+#
+# Used by G07 (network C2 / web-attack reconstruction). The agent reconstructs
+# web attacks from HTTP, identifies C2 channels via JA3/JA4 TLS fingerprints,
+# hunts known-bad signatures with Suricata, and enriches with Zeek metadata.
+# PCAP/PCAPNG mounts at /evidence:ro; output at /work:rw.
+#
+# Install-method notes (Phase 3 hardening):
+#   * Debian 13 (trixie) ships neither a `zeek` apt package nor the `adduser`
+#     package that wireshark-common's postinst needs to create its group, so
+#     we (a) install `adduser` before tshark and (b) install Zeek from the
+#     official `zeek/zeek` Docker image via a multi-stage COPY instead of apt.
+#     The zeek/zeek image is itself built on Debian 13, so the copied tree
+#     links cleanly against our glibc with no missing shared libraries.
+#   * tshark and Suricata come from Debian apt as before.
+
+ARG BASE_TAG=latest
+ARG ZEEK_VERSION=8.0.9
+
+# ---- Zeek source stage (official image, same Debian release as our base) ----
+# BuildKit does not allow ARG expansion in `COPY --from=...`, so we declare an
+# explicit named stage here and COPY from it below.
+FROM zeek/zeek:${ZEEK_VERSION} AS zeek-src
+
+# ---- main stage: layer network tools on svetovid/base ----
+FROM svetovid/base:${BASE_TAG}
+
+# ---- tshark (Wireshark CLI) ----
+# tshark is the headless capture-analysis binary from the Wireshark suite; on
+# Debian it ships in its own `tshark` package (no GUI deps). We accept the
+# tshark EULA non-interactively via debconf so the install doesn't block.
+#
+# We pre-install `adduser` (provides `addgroup`): wireshark-common's postinst
+# creates a `wireshark` system group and fails hard if addgroup is missing,
+# which is what used to break this layer under --no-install-recommends.
+ENV DEBIAN_FRONTEND=noninteractive
+RUN echo "wireshark-common wireshark-common/install-setuid boolean false" \
+        | debconf-set-selections \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        adduser \
+        tshark \
+    && rm -rf /var/lib/apt/lists/* \
+    && tshark --version 2>&1 | head -1
+
+# ---- Zeek (formerly Bro) — installed from the official zeek/zeek image ----
+# Debian stable has no `zeek` package, and download.zeek.org's binary tarballs
+# are Cloudflare-gated (HTTP 403). The official `zeek/zeek` image is built on
+# the same Debian release as our base, so we COPY its install tree whole. This
+# gives us a working `zeek` (and `zeekctl`) with no source build and no missing
+# shared libraries. We pin the version for reproducibility.
+# NOTE: multi-arch is handled per-platform — Docker pulls the matching
+# TARGETARCH zeek/zeek image automatically.
+ARG ZEEK_VERSION=8.0.9
+COPY --from=zeek-src /usr/local/zeek /usr/local/zeek
+ENV PATH="/usr/local/zeek/bin:${PATH}"
+# Zeek's only runtime deps that live outside /usr/local/zeek are ZeroMQ (broker),
+# Node.js (the JavaScript/Spiderlight engine), and libuv (pulled in by Node).
+# The zeek/zeek image installs these from Debian; our base does not, so add them.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libzmq5 \
+        libnode115 \
+        libuv1t64 \
+    && rm -rf /var/lib/apt/lists/* \
+    && zeek --version 2>&1 | head -1
+
+# ---- Suricata (IDS / signature engine) ----
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        suricata \
+    && rm -rf /var/lib/apt/lists/* \
+    && suricata --build-info 2>&1 | grep -E '^This is Suricata version' | head -1
+
+WORKDIR /work
+
+# Sanity check: every binary prints something. The build fails fast if any tool
+# is broken — no silent image regressions. (A `set -e` plus bare invocations —
+# no `|| true`, no subshell swallowing — means a missing lib aborts the build.)
+RUN set -e && echo "=== network image tool inventory ===" \
+    && echo "-- tshark --" && tshark --version 2>&1 | head -1 \
+    && echo "-- zeek --" && zeek --version 2>&1 | head -1 \
+    && echo "-- suricata --" && suricata -V 2>&1 | head -1 \
+    && echo "ATT&CK objects:" \
+    && jq '.objects | length' /opt/attack/enterprise-attack.json
+
+CMD ["bash"]

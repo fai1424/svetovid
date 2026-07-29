@@ -1,0 +1,64 @@
+# Svetovid base image — shared foundation for every per-cluster tool image.
+#
+# Provides:
+#   - debian-slim + python3 (for Python-based tools like iLEAPP/ALEAPP)
+#   - ca-certificates, jq, basic CLI utilities
+#   - the MITRE ATT&CK enterprise STIX bundle at /opt/attack/
+#   - the Sigma rules repository at /opt/sigma/
+#
+# Tool-specific images (svetovid/eztools, svetovid/volatility, …) layer their
+# own binaries on top of this base, keeping them small and shareable.
+
+FROM debian:stable-slim
+
+# Metadata
+LABEL org.opencontainers.image.title="svetovid-base" \
+      org.opencontainers.image.description="Svetovid DFIR platform — base image with shared knowledge bases" \
+      org.opencontainers.image.source="https://github.com/your-org/svetovid"
+
+# Core packages: keep this lean. Each tool image adds what it actually needs.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        wget \
+        unzip \
+        git \
+        jq \
+        python3 \
+        python3-pip \
+        python3-venv \
+        libmagic1 \
+        file \
+        xz-utils \
+        procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Shared knowledge bases, mounted at well-known paths so tool wrappers can
+# hard-code them. ATT&CK version is pinned via the build arg.
+ARG ATTACK_VERSION=15.1
+ARG SIGMA_REF=master
+
+RUN mkdir -p /opt/attack /opt/sigma /work
+
+# MITRE ATT&CK Enterprise STIX bundle. Small (~10MB), no API key needed.
+# Stored at /opt/attack/enterprise-attack.json — that's the path mitre_attack.py
+# looks up via $SVETOVID_ATTACK_BUNDLE.
+RUN curl -fsSL -o /opt/attack/enterprise-attack.json \
+        "https://raw.githubusercontent.com/mitre/cti/ATT%26CK-v${ATTACK_VERSION}/enterprise-attack/enterprise-attack.json" \
+    && test -s /opt/attack/enterprise-attack.json \
+    && echo "ATT&CK v${ATTACK_VERSION} bundle: $(jq '.objects | length' /opt/attack/enterprise-attack.json) objects"
+
+# Sigma rule repo — used by Chainsaw and Hayabusa for hunting.
+# Pinned to a ref so rule-set changes don't silently alter results.
+RUN git clone --depth=1 --branch "${SIGMA_REF}" \
+        https://github.com/SigmaHQ/sigma.git /opt/sigma-src 2>/dev/null \
+    || git clone --depth=1 https://github.com/SigmaHQ/sigma.git /opt/sigma-src \
+    && mkdir -p /opt/sigma/rules \
+    && cp -r /opt/sigma-src/rules/windows/* /opt/sigma/rules/ 2>/dev/null || true \
+    && rm -rf /opt/sigma-src
+
+# Default working directory (mounted rw by docker_runner.py)
+WORKDIR /work
+
+# Nothing runs by default — each tool image sets its own ENTRYPOINT/CMD.
+CMD ["bash"]

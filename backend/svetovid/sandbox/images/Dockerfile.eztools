@@ -1,0 +1,134 @@
+# svetovid/eztools — Windows triage toolkit image.
+#
+# Layers on svetovid-base and adds the Windows triage stack:
+#   - Chainsaw (WithSecure)            — Rust, Sigma-rule hunting over EVTX
+#   - Hayabusa (Yamato-Security)       — Rust, Sigma timeline generation
+#   - The Sleuth Kit (TSK)             — fls/icat/mmls/mactime (from apt)
+#   - .NET 9 runtime                   — for Eric Zimmerman tools (dotnet-install.sh)
+#   - Eric Zimmerman tools             — EvtxECmd, MFTECmd, PECmd, AmcacheParser,
+#                                        RECmd, JLECmd, LECmd, RBCmd, SrumECmd
+#   - Sigma mappings for Chainsaw      — bundled
+#
+# Used by G01 (attack timeline) and (later) G02/G03.
+# Evidence mounts at /evidence (read-only); output at /work (read-write).
+
+ARG BASE_TAG=latest
+FROM svetovid/base:${BASE_TAG}
+
+ARG TARGETARCH
+
+# ---- Chainsaw (WithSecure) ----
+# The release tarball extracts to `chainsaw/chainsaw` (binary) + mappings/.
+ARG CHAINSAW_VERSION=2.16.2
+RUN case "$TARGETARCH" in \
+        amd64) CHAINSAW_ASSET=chainsaw_x86_64-unknown-linux-gnu.tar.gz ;; \
+        arm64) CHAINSAW_ASSET=chainsaw_aarch64-unknown-linux-gnu.tar.gz ;; \
+        *) echo "unsupported arch: $TARGETARCH"; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/chainsaw.tar.gz \
+        "https://github.com/WithSecureLabs/chainsaw/releases/download/v${CHAINSAW_VERSION}/${CHAINSAW_ASSET}" \
+    && mkdir -p /opt/chainsaw-bin /opt/chainsaw \
+    && tar -xzf /tmp/chainsaw.tar.gz -C /opt/chainsaw-bin --strip-components=1 \
+    && chmod +x /opt/chainsaw-bin/chainsaw \
+    && ln -s /opt/chainsaw-bin/chainsaw /usr/local/bin/chainsaw \
+    && cp -r /opt/chainsaw-bin/mappings/* /opt/chainsaw/mappings/ 2>/dev/null || true \
+    && rm -f /tmp/chainsaw.tar.gz \
+    && chainsaw --version 2>&1 | head -1
+
+# ---- Hayabusa (Yamato-Security) ----
+# The release zip's binary is named `hayabusa-<ver>-lin-<arch>-gnu`. We rename.
+ARG HAYABUSA_VERSION=3.10.0
+RUN case "$TARGETARCH" in \
+        amd64) HAYA_ASSET=hayabusa-${HAYABUSA_VERSION}-lin-x64-gnu.zip ;; \
+        arm64) HAYA_ASSET=hayabusa-${HAYABUSA_VERSION}-lin-aarch64-gnu.zip ;; \
+    esac; \
+    curl -fsSL -o /tmp/hayabusa.zip \
+        "https://github.com/Yamato-Security/hayabusa/releases/download/v${HAYABUSA_VERSION}/${HAYA_ASSET}" \
+    && mkdir -p /opt/hayabusa-bin \
+    && unzip -q /tmp/hayabusa.zip -d /opt/hayabusa-bin \
+    && BIN=$(find /opt/hayabusa-bin -maxdepth 1 -type f -name 'hayabusa*' | head -1) \
+    && chmod +x "$BIN" \
+    && ln -s "$BIN" /usr/local/bin/hayabusa \
+    && rm -f /tmp/hayabusa.zip \
+    && hayabusa -V 2>&1 | head -1
+
+# ---- The Sleuth Kit (TSK) ----
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        sleuthkit \
+    && rm -rf /var/lib/apt/lists/* \
+    && fls -V 2>&1 | head -1
+
+# ---- .NET 9 runtime (for Eric Zimmerman tools) ----
+# GAP NOTE: Debian stable (13/trixie) does NOT ship .NET in apt at all
+# (`apt-cache search dotnet` returns nothing), so we cannot `apt install
+# dotnet-runtime-9.0`. Instead we install the official Microsoft .NET 9
+# runtime via the dotnet-install.sh bootstrap script, which drops a
+# self-contained runtime tree at /opt/dotnet with no apt metadata needed.
+# This is the Microsoft-documented Linux install path for distros without a
+# package feed.
+ENV DOTNET_ROOT=/opt/dotnet
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+ENV PATH="/opt/dotnet:${PATH}"
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libicu76 \
+        libssl3t64 \
+        zlib1g \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fsSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --runtime dotnet --channel 9.0 --install-dir /opt/dotnet \
+    && rm -f /tmp/dotnet-install.sh \
+    && dotnet --list-runtimes
+
+# ---- Eric Zimmerman tools (.NET 9 CLI parsers) ----
+# Each tool is a .zip with a <Tool>.dll inside (plus Maps/Plugins/etc.). The
+# zip layout varies: some ship the dll at the archive root, some inside a
+# sub-folder (e.g. EvtxeCmd/). We extract each zip, then LOCATE the dll by
+# name and stage it at the path the agent expects:
+#     /opt/eztools/<Tool>/<Tool>.dll
+# (tools/eztools.py hard-codes that path when it builds the `dotnet ...dll`
+# command.) The tool's full sibling tree (Maps/, Plugins/, *.dll dependencies)
+# is copied alongside so the parser can find its resources.
+ARG EZ_TOOLS_URL=https://download.ericzimmermanstools.com/net9
+RUN mkdir -p /opt/eztools /tmp/ezdl \
+    && for t in EvtxECmd MFTECmd PECmd AmcacheParser RECmd JLECmd LECmd RBCmd SrumECmd; do \
+        echo "▶ fetching $t"; \
+        curl -fsSL -o "/tmp/ezdl/$t.zip" "${EZ_TOOLS_URL}/$t.zip" || { echo "download failed: $t"; exit 1; }; \
+        mkdir -p "/tmp/ezdl/$t"; \
+        unzip -q "/tmp/ezdl/$t.zip" -d "/tmp/ezdl/$t"; \
+        DLL="$(find /tmp/ezdl/$t -type f -name "$t.dll" | head -1)"; \
+        if [ -z "$DLL" ]; then echo "no $t.dll in zip"; exit 1; fi; \
+        SRCDIR="$(dirname "$DLL")"; \
+        mkdir -p "/opt/eztools/$t"; \
+        cp -a "$SRCDIR/." "/opt/eztools/$t/"; \
+        rm -rf "/tmp/ezdl/$t" "/tmp/ezdl/$t.zip"; \
+    done \
+    && rm -rf /tmp/ezdl
+
+WORKDIR /work
+
+# Sanity check: every binary prints something. The build fails fast if any
+# tool is broken — no silent image regressions. The Eric Zimmerman tools are
+# exercised with `dotnet <tool>.dll` (they have no --help on every build, so
+# we invoke with no args and accept their usage banner / non-zero exit as
+# "the runtime loaded the assembly".)
+RUN set -e && echo "=== tool inventory ===" \
+    && chainsaw --version 2>&1 | head -1 \
+    && hayabusa -V 2>&1 | head -1 \
+    && fls -V 2>&1 | head -1 \
+    && echo ".NET runtimes:" && dotnet --list-runtimes \
+    && echo "EZ tools:" \
+    && for t in EvtxECmd MFTECmd PECmd AmcacheParser RECmd JLECmd LECmd RBCmd SrumECmd; do \
+         test -f "/opt/eztools/$t/$t.dll" || { echo "missing /opt/eztools/$t/$t.dll"; exit 1; }; \
+         out="$(dotnet "/opt/eztools/$t/$t.dll" --help 2>&1 | head -1)"; \
+         echo "  $t -> $out"; \
+       done \
+    && echo "ATT&CK objects:" \
+    && jq '.objects | length' /opt/attack/enterprise-attack.json \
+    && echo "Sigma rules dirs:" \
+    && ls /opt/sigma/rules/ | head -5 \
+    && echo "Chainsaw mappings:" \
+    && ls /opt/chainsaw-bin/mappings/
+
+CMD ["bash"]
