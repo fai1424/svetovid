@@ -511,45 +511,29 @@ class SmartRequest(BaseModel):
 
 @app.post("/api/investigations/smart")
 async def smart_investigation(req: SmartRequest, authorization: str | None = Header(None)) -> dict[str, Any]:
-    """Plan + start an investigation from a natural-language request.
+    """Start a dynamic investigation from a natural-language request.
 
-    The planner LLM reads the user's description, the available goals, and the
-    scanned evidence types, then returns which goal to run + a refined prompt.
-    The investigation starts immediately after planning.
+    Instead of picking a predefined goal, this launches the dynamic investigation
+    mode: the agent lists the evidence, reads the user's description, and freely
+    decides what tools to use and in what order — with the FULL tool library
+    available. This is the recommended investigation path.
     """
     _check_auth(authorization)
-    from .agent.planner import plan_investigation
-    from .goals.registry import registry
+    from .agent.dynamic import DynamicInvestigationGoal
 
-    # Scan the evidence first (so the planner knows what's available)
-    evidence: list[dict] = []
-    try:
-        from .evidence.scanner import scan_folder
-        evidence = await scan_folder(req.evidence_path)
-    except Exception:
-        pass  # planner works without evidence info too
-
-    # Plan
-    plan = await plan_investigation(req.request, evidence)
-
-    # Validate the chosen goal exists
-    goal = registry.get(plan.goal_id)
-    if goal is None:
-        raise HTTPException(500, f"planner selected unknown goal {plan.goal_id}")
-
-    # Start the investigation with the refined prompt
+    goal = DynamicInvestigationGoal()
     investigation_id = E.new_id("inv")
-    asyncio.create_task(_run_goal(goal, investigation_id, req.evidence_path, plan.user_prompt))
+    asyncio.create_task(_run_goal(goal, investigation_id, req.evidence_path, req.request))
 
     return {
         "investigation_id": investigation_id,
-        "goal_id": plan.goal_id,
-        "goal_label": goal.label,
-        "user_prompt": plan.user_prompt,
-        "confidence": plan.confidence,
+        "goal_id": "DYNAMIC",
+        "goal_label": "Dynamic investigation",
+        "user_prompt": req.request,
+        "mode": "dynamic",
+    }
         "reasoning": plan.reasoning,
         "suggested_tools": plan.suggested_tools,
-        "evidence_found": len(evidence),
     }
 
 

@@ -61,6 +61,19 @@ export function GoalSelect({ onNext }: Props) {
     });
   }, []);
 
+  async function startDynamic() {
+    if (!request.trim() || !evidencePath.trim()) return;
+    setStarting(true);
+    try {
+      await api.smartInvestigation(request, evidencePath);
+      onNext();
+    } catch (e) {
+      setPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setStarting(false);
+    }
+  }
+
   async function planInvestigation() {
     if (!request.trim() || !evidencePath.trim()) return;
     setPlanning(true);
@@ -103,7 +116,7 @@ export function GoalSelect({ onNext }: Props) {
     return (
       <Screen
         title="Describe what happened"
-        subtitle="Tell the agent about the incident in your own words. It will pick the right investigation plan."
+        subtitle="Tell the agent what to investigate. It will examine the evidence and build its own investigation plan."
       >
         <div className="max-w-3xl space-y-md">
           {/* Evidence path */}
@@ -162,15 +175,25 @@ export function GoalSelect({ onNext }: Props) {
                 >
                   Or browse all 23 goals manually →
                 </button>
-                <Button
-                  variant="primary"
-                  onClick={planInvestigation}
-                  disabled={!request.trim() || !evidencePath.trim() || planning}
-                  loading={planning}
-                >
-                  {!planning && <Sparkles className="h-3.5 w-3.5" />}
-                  {planning ? "Analyzing…" : "Suggest plan"}
-                </Button>
+                <div className="flex items-center gap-sm">
+                  <Button
+                    variant="ghost"
+                    onClick={planInvestigation}
+                    disabled={!request.trim() || !evidencePath.trim() || planning}
+                    loading={planning}
+                  >
+                    {!planning && <Sparkles className="h-3.5 w-3.5" />}
+                    {planning ? "Analyzing…" : "Suggest goal"}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={startDynamic}
+                    disabled={!request.trim() || !evidencePath.trim() || starting}
+                    loading={starting}
+                  >
+                    Start investigation
+                  </Button>
+                </div>
               </div>
             </CardBody>
           </Card>
