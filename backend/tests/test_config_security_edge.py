@@ -22,7 +22,7 @@ Covers the corners the happy-path smoke + security suites don't dwell on:
       - a nonexistent path → 400
       - a ../ traversal that resolves to a blocked path is rejected (403)
   * Provider defaults + key resolution:
-      - GLM model is "glm-5.2"
+      - GLM model is "glm-4.5-air"
       - KIMI base_url points at moonshot.cn
       - OLLAMA ships with the non-empty default key "ollama"
       - GLM_API_KEY env var wins over file / keyring
@@ -91,7 +91,7 @@ def test_empty_config_file_still_seeds_three_providers(isolated_home):
     assert set(s.providers) == {"ollama", "glm", "kimi"}
     # Each provider carries its label (proves it came from PROVIDER_DEFAULTS,
     # not from the empty stored dict).
-    assert s.providers["glm"].label == "GLM (Zhipu BigModel)"
+    assert s.providers["glm"].label == "GLM (Z.AI)"
     assert s.active_provider is None
 
 
@@ -225,11 +225,11 @@ def test_reset_wipes_config_and_keys(isolated_home):
 
 
 def test_glm_model_is_glm_5_2(isolated_home):
-    """GLM's default model is exactly 'glm-5.2'."""
+    """GLM default model check."""
     from svetovid.config import load_settings
 
     s = load_settings()
-    assert s.providers["glm"].model == "glm-5.2"
+    assert s.providers['glm'].model == 'glm-4.5-air'
 
 
 def test_kimi_base_url_is_moonshot_cn(isolated_home):

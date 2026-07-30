@@ -63,15 +63,36 @@ from ..tools.base import Tool, ToolContext
 class ReactConfig:
     """Tuning knobs for the ReAct loop."""
 
-    max_iterations: int = 12          # hard cap; LLM rarely needs >8 for DFIR
+    max_iterations: int = 20          # increased: failed tools waste iterations
     max_tokens_per_call: int = 4096
     bind_tools_strict: bool = False   # GLM/KIMI prefer non-strict tool binding
     stop_on_error: bool = False       # True = halt on any tool error; False = report + continue
-    # Cumulative token budget across the whole ReAct run. If the agent's
-    # accumulated token usage (sum of LLM ``usage_metadata.total_tokens``)
-    # exceeds this, the loop stops and synthesizes a final answer instead of
-    # calling the LLM again. Prevents runaway cost / context blowups.
-    max_tokens_total: int = 100000
+    max_tokens_total: int = 150000    # increased for complex investigations
+
+
+# This text is appended to every goal's system prompt to give the agent
+# robust error-recovery guidance. Without it, the agent wastes all its
+# iterations retrying a failed tool instead of trying a different approach.
+ERROR_RECOVERY_GUIDANCE = """
+
+## Tool failure recovery rules (CRITICAL — read these)
+- If a tool returns an error (exit_code != 0, or an error message), DO NOT \
+retry the same tool with the same arguments. Try a different tool instead.
+- To LIST FILES in the evidence directory: use forensic_keyword_search with \
+query="*". Do NOT use bulk_extractor for listing — bulk_extractor scans \
+binary content, not directory structure.
+- To SEARCH for keywords in files: use forensic_keyword_search (it works on \
+text files). Do NOT use bulk_extractor for keyword search.
+- bulk_extractor is ONLY for scanning raw disk images (E01/.dd/.raw) for \
+embedded features (emails, URLs, credit cards). If the evidence is loose \
+files (not a disk image), do NOT call bulk_extractor.
+- If Docker fails (image not found, daemon error), try forensic_search or \
+mitre_attack which run on the host.
+- After 2 consecutive tool failures, STOP calling tools and write your \
+report based on whatever information you have gathered so far.
+- The evidence folder may contain subdirectories. Use forensic_keyword_search \
+with an empty query to list the top-level contents first.
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -112,8 +133,12 @@ def build_react_graph(
 ) -> Any:
     """Build a compiled LangGraph ReAct graph for one investigation.
 
-    Returns a CompiledStateGraph ready to ``.invoke(initial_state)``.
+    The error-recovery guidance is appended to every system prompt so the agent
+    knows what to do when tools fail (instead of wasting all its iterations).
     """
+    # Append the universal error-recovery guidance
+    system_prompt = system_prompt + ERROR_RECOVERY_GUIDANCE
+
     settings = load_settings()
     active = provider or settings.active()
     if active is None:

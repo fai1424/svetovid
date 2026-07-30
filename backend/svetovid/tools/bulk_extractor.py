@@ -21,7 +21,7 @@ from .base import Tool, ToolContext, ToolResult
 
 class BulkExtractorTool(Tool):
     name = "bulk_extractor"
-    image = "svetovid/carving"
+    image = "svetovid/eztools"  # reuse eztools (has TSK + bulk_extractor via apt)
     description = (
         "Scan a disk image or raw file for features (emails, URLs, IPs, "
         "credit cards, EXIF) without filesystem parsing. Fast triage; "

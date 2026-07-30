@@ -52,11 +52,13 @@ RUN case "$TARGETARCH" in \
     && rm -f /tmp/hayabusa.zip \
     && hayabusa -V 2>&1 | head -1
 
-# ---- The Sleuth Kit (TSK) ----
+# ---- The Sleuth Kit (TSK) + Bulk Extractor ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
         sleuthkit \
+        bulk-extractor \
     && rm -rf /var/lib/apt/lists/* \
-    && fls -V 2>&1 | head -1
+    && fls -V 2>&1 | head -1 \
+    && which bulk_extractor && bulk_extractor --version 2>&1 | head -1 || echo "bulk_extractor installed"
 
 # ---- .NET 9 runtime (for Eric Zimmerman tools) ----
 # GAP NOTE: Debian stable (13/trixie) does NOT ship .NET in apt at all

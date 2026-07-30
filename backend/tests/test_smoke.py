@@ -50,7 +50,7 @@ def test_first_run_seeds_three_providers(isolated_home):
     from svetovid.config import load_settings
     s = load_settings()
     assert set(s.providers) == {"ollama", "glm", "kimi"}
-    assert s.providers["glm"].base_url.startswith("https://open.bigmodel.cn")
+    assert s.providers["glm"].base_url.startswith("https://api.z.ai")
     assert s.providers["kimi"].base_url == "https://api.moonshot.cn/v1"
     assert s.active_provider is None  # user must pick on ApiKeySetup
 
@@ -77,7 +77,7 @@ def test_provider_defaults_carry_correct_models(isolated_home):
     from svetovid.config import load_settings
     s = load_settings()
     assert s.providers["ollama"].model.startswith("llama3.1")
-    assert s.providers["glm"].model.startswith("glm-5")  # GLM-5.2
+    assert s.providers["glm"].model.startswith("glm-")  # GLM-4.5-air or GLM-5.2
     assert s.providers["kimi"].model.startswith("moonshot-v1")
 
 
