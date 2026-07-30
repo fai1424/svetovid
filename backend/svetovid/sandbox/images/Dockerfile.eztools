@@ -52,13 +52,20 @@ RUN case "$TARGETARCH" in \
     && rm -f /tmp/hayabusa.zip \
     && hayabusa -V 2>&1 | head -1
 
-# ---- The Sleuth Kit (TSK) + Bulk Extractor ----
+# ---- The Sleuth Kit (TSK) ----
 RUN apt-get update && apt-get install -y --no-install-recommends \
         sleuthkit \
-        bulk-extractor \
     && rm -rf /var/lib/apt/lists/* \
-    && fls -V 2>&1 | head -1 \
-    && which bulk_extractor && bulk_extractor --version 2>&1 | head -1 || echo "bulk_extractor installed"
+    && fls -V 2>&1 | head -1
+
+# ---- Bulk Extractor (from source — no apt package in Debian trixie) ----
+# Skip for now: building from source is slow and the agent can use forensic_search
+# or tsk fls for file listing instead. Re-enable when needed:
+# RUN apt-get update && apt-get install -y --no-install-recommends autoconf automake \
+#         libtool libssl-dev pkg-config flex libewf-dev libjson-c-dev \
+#     && git clone --depth=1 https://github.com/simsong/bulk_extractor.git /tmp/be \
+#     && cd /tmp/be && ./bootstrap && ./configure && make -j$(nproc) && make install \
+#     && rm -rf /tmp/be
 
 # ---- .NET 9 runtime (for Eric Zimmerman tools) ----
 # GAP NOTE: Debian stable (13/trixie) does NOT ship .NET in apt at all

@@ -25,7 +25,9 @@ class BulkExtractorTool(Tool):
     description = (
         "Scan a disk image or raw file for features (emails, URLs, IPs, "
         "credit cards, EXIF) without filesystem parsing. Fast triage; "
-        "outputs feature files (TSV). Use on E01/raw images."
+        "outputs feature files (TSV). Use on E01/raw images. "
+        "NOTE: bulk_extractor may not be installed in all Docker images. "
+        "If it fails, use forensic_keyword_search or tsk fls instead."
     )
 
     def schema(self) -> dict[str, Any]:
