@@ -394,8 +394,9 @@ def build_react_graph(
 class SvetovidToolAdapter(BaseTool):
     """Adapt a Svetovid ``Tool`` to LangChain's ``BaseTool`` interface.
 
-    LangChain calls ``_arun`` for async invocation; we forward to our tool's
-    ``invoke`` with the bound ToolContext.
+    CRITICAL: we derive ``args_schema`` from the tool's ``schema()`` JSON so
+    the LLM provider (GLM/KIMI/OpenAI) knows exactly what arguments to pass.
+    Without this, GLM sends empty args or wraps them in a 'kwargs' key.
     """
 
     name: str = ""
@@ -406,9 +407,40 @@ class SvetovidToolAdapter(BaseTool):
     _ctx: Any
 
     def __init__(self, tool: Tool, ctx: ToolContext) -> None:
+        # Build a Pydantic model from the tool's flat JSON schema so LangChain
+        # can advertise the exact argument names + types to the LLM.
+        try:
+            schema = tool.schema()
+        except Exception:
+            schema = {"type": "object", "properties": {}}
+        props = schema.get("properties", {})
+        required = schema.get("required", [])
+
+        from pydantic import Field, create_model
+        type_map = {
+            "string": str,
+            "number": float,
+            "integer": int,
+            "boolean": bool,
+            "array": list,
+        }
+        field_defs: dict[str, Any] = {}
+        for prop_name, prop_def in props.items():
+            py_type = type_map.get(prop_def.get("type", "string"), str)
+            desc = prop_def.get("description", "")
+            if prop_def.get("enum"):
+                desc += f" Options: {', '.join(str(x) for x in prop_def['enum'])}."
+            if prop_name in required:
+                field_defs[prop_name] = (py_type, Field(..., description=desc))
+            else:
+                field_defs[prop_name] = (py_type | None, Field(default=prop_def.get("default"), description=desc))
+
+        ArgsModel = create_model(f"{tool.name}_args", **field_defs) if field_defs else None
+
         super().__init__(
             name=tool.name,
             description=tool.description or tool.name,
+            args_schema=ArgsModel,
         )
         # bypass pydantic (these are runtime-only refs)
         object.__setattr__(self, "_svetovid_tool", tool)
@@ -420,6 +452,10 @@ class SvetovidToolAdapter(BaseTool):
     async def _arun(self, **kwargs) -> str:
         tool = object.__getattribute__(self, "_svetovid_tool")
         ctx = object.__getattribute__(self, "_ctx")
+        # Normalize GLM kwargs wrapping (defensive — should be fixed by
+        # args_schema but keep as safety net)
+        if isinstance(kwargs.get("kwargs"), dict):
+            kwargs = kwargs["kwargs"]
         result = await tool.invoke(kwargs, ctx)
         return _format_for_llm(result.data if result.data is not None else result.summary)
 

@@ -129,7 +129,13 @@ async def run_in_sandbox(
             detach=True,
             stdout=True,
             stderr=True,
-            environment=extra_env or {},
+            environment={
+                # The non-root user (uid 1000) has a minimal PATH that doesn't
+                # include /usr/bin where fls, mmls, bulk_extractor, chainsaw etc.
+                # live. Set an explicit PATH so all tools are discoverable.
+                "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/eztools:/opt/chainsaw-bin:/opt/hayabusa-bin",
+                **(extra_env or {}),
+            },
             working_dir="/work",
             # --- Q4 security hardening ---
             cap_drop=["ALL"],
