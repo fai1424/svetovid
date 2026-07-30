@@ -532,9 +532,6 @@ async def smart_investigation(req: SmartRequest, authorization: str | None = Hea
         "user_prompt": req.request,
         "mode": "dynamic",
     }
-        "reasoning": plan.reasoning,
-        "suggested_tools": plan.suggested_tools,
-    }
 
 
 @app.post("/api/investigations/plan")
