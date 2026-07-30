@@ -20,7 +20,7 @@ from typing import Any
 from ..agent import events as E
 from ..agent.react import ReactConfig, build_react_graph
 from ..config import load_settings
-from .base import Goal, GoalNode
+from ..goals.base import Goal, GoalNode
 
 logger = logging.getLogger(__name__)
 
@@ -221,15 +221,14 @@ class DynamicInvestigationGoal(Goal):
         from ..tools.ileapp_parse import IleappTool
         from ..tools.aleapp_parse import AleappParseTool
         from ..tools.k8s_parse import K8sParseTool
-        from ..tools.pii_scanner import PiiScannerTool
+        from ..tools.pii_scanner import PIIScannerTool
         from ..tools.timeline_gap import TimelineGapTool
-        from ..tools.usb_history import UsbHistoryTool
-        from ..tools.registry_mru import RegistryMruTool
-        from ..tools.signature_check import SignatureCheckTool
-        from ..tools.decryptor_lookup import DecryptorLookupTool
-        from ..tools.evidence_graph import EvidenceCorrelateTool
+        from ..tools.usb_history import USBHistoryTool
+        from ..tools.registry_mru import RegistryMRUTool
+        from ..tools.decryptor_lookup import RansomwareDecryptorTool
+        from ..tools.evidence_graph import EvidenceGraphTool
 
-        return [
+        tools = [
             ChainsawTool(),
             HayabusaTool(),
             EzTool(),
@@ -246,14 +245,14 @@ class DynamicInvestigationGoal(Goal):
             IleappTool(),
             AleappParseTool(),
             K8sParseTool(),
-            PiiScannerTool(),
+            PIIScannerTool(),
             TimelineGapTool(),
-            UsbHistoryTool(),
-            RegistryMruTool(),
-            SignatureCheckTool(),
-            DecryptorLookupTool(),
-            EvidenceCorrelateTool(),
+            USBHistoryTool(),
+            RegistryMRUTool(),
+            RansomwareDecryptorTool(),
+            EvidenceGraphTool(),
         ]
+        return tools
 
     async def _set_node(self, bus, inv_id: str, node: str, status: str) -> None:
         bus.publish(E.node_state_change(inv_id, node, status))  # type: ignore[arg-type]
