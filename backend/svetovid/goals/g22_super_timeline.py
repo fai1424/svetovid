@@ -154,7 +154,7 @@ class SuperTimelineGoal(Goal):
                         f"\n\n## Evidence present\n{triage.summary}\n"
                         f"## Additional user context\n{user_prompt}\n" if user_prompt else ""
                     ),
-                    config=ReactConfig(max_iterations=15),
+                    config=ReactConfig(),
                     investigation_id=investigation_id,
                     case_id=case_id,
                     bus=bus,

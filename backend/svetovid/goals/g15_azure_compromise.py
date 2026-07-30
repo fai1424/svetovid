@@ -155,7 +155,7 @@ class AzureCompromiseGoal(Goal):
                     system_prompt=SYSTEM_PROMPT + (
                         f"\n\n## Additional user context\n{user_prompt}\n" if user_prompt else ""
                     ),
-                    config=ReactConfig(max_iterations=15),
+                    config=ReactConfig(),
                     investigation_id=investigation_id,
                     case_id=case_id,
                     bus=bus,
