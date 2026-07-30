@@ -392,12 +392,12 @@ def test_eventbus_unsubscribe_nonexistent_queue_is_noop():
 
 
 def test_react_config_defaults_are_sane():
-    """``ReactConfig`` defaults must keep the loop bounded and usable."""
+    """``ReactConfig`` defaults are unlimited (0) — dup-detection prevents loops."""
     from svetovid.agent.react import ReactConfig
     c = ReactConfig()
-    assert 4 <= c.max_iterations <= 30
+    assert c.max_iterations == 0  # 0 = unlimited
     assert c.max_tokens_per_call >= 1024
-    assert c.max_tokens_total >= 10_000, "token budget must be meaningfully large"
+    assert c.max_tokens_total == 0  # 0 = unlimited
     assert isinstance(c.stop_on_error, bool)
     assert isinstance(c.bind_tools_strict, bool)
 

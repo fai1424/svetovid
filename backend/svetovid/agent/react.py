@@ -61,13 +61,20 @@ from ..tools.base import Tool, ToolContext
 
 @dataclass
 class ReactConfig:
-    """Tuning knobs for the ReAct loop."""
+    """Tuning knobs for the ReAct loop.
 
-    max_iterations: int = 20          # increased: failed tools waste iterations
+    Defaults to UNLIMITED iterations and token budget. The duplicate-detection
+    guard (called_tools set) prevents true infinite loops — if the agent keeps
+    calling DIFFERENT tools with DIFFERENT args, that's genuine investigation
+    progress, not a loop. Set max_iterations=0 or max_tokens_total=0 to
+    explicitly disable that limit.
+    """
+
+    max_iterations: int = 0           # 0 = unlimited (dup-detection prevents loops)
     max_tokens_per_call: int = 4096
     bind_tools_strict: bool = False   # GLM/KIMI prefer non-strict tool binding
     stop_on_error: bool = False       # True = halt on any tool error; False = report + continue
-    max_tokens_total: int = 150000    # increased for complex investigations
+    max_tokens_total: int = 0         # 0 = unlimited
 
 
 # This text is appended to every goal's system prompt to give the agent
@@ -171,7 +178,8 @@ def build_react_graph(
     async def agent_node(state: ReactState) -> dict[str, Any]:
         """LLM reasons about the state, emits a thought, and chooses an action."""
         iteration = state.get("iteration", 0) + 1
-        if iteration > config.max_iterations:
+        # 0 = unlimited; only enforce the cap if it's set to a positive value
+        if config.max_iterations > 0 and iteration > config.max_iterations:
             bus.publish(E.agent_thought(
                 investigation_id,
                 f"Reached iteration cap ({config.max_iterations}). Stopping.",
@@ -223,7 +231,7 @@ def build_react_graph(
         usage = getattr(response, "usage_metadata", None)
         if isinstance(usage, dict) and isinstance(usage.get("total_tokens"), int):
             total_tokens += int(usage["total_tokens"])
-        if total_tokens > config.max_tokens_total:
+        if config.max_tokens_total > 0 and total_tokens > config.max_tokens_total:
             bus.publish(E.agent_thought(
                 investigation_id,
                 f"Token budget ({config.max_tokens_total}) exceeded after {total_tokens} tokens. Stopping.",

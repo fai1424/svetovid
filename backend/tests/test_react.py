@@ -97,5 +97,7 @@ def test_format_for_llm_truncates_large_payloads():
 def test_react_config_defaults_are_sane():
     from svetovid.agent.react import ReactConfig
     c = ReactConfig()
-    assert 4 <= c.max_iterations <= 30
+    # 0 = unlimited (the duplicate-detection guard prevents true loops)
+    assert c.max_iterations == 0 or c.max_iterations >= 4
+    assert c.max_tokens_total == 0 or c.max_tokens_total >= 10_000
     assert c.max_tokens_per_call >= 1024
