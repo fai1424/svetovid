@@ -66,9 +66,9 @@ PROVIDER_DEFAULTS: dict[ProviderId, dict] = {
         "api_key": "ollama",
     },
     "glm": {
-        "label": "GLM (Zhipu BigModel)",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "model": "glm-5.2",
+        "label": "GLM (Z.AI)",
+        "base_url": "https://api.z.ai/api/coding/paas/v4",
+        "model": "glm-4.5-air",
     },
     "kimi": {
         "label": "KIMI (Moonshot)",

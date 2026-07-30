@@ -281,18 +281,20 @@ async def put_settings(payload: dict[str, Any], authorization: str | None = Head
 
     new_providers: dict[ProviderId, Provider] = dict(current.providers)
     for pid_str, p_data in (payload.get("providers") or {}).items():
-        try:
-            # ProviderId is a typing.Literal; calling it raises TypeError for a
-            # value not in the literal set (not ValueError), so catch both.
-            pid = ProviderId(pid_str)  # type: ignore[valid-type]
-        except (ValueError, TypeError):
+        # ProviderId is a typing.Literal, not a callable. Validate manually.
+        valid_ids = ("ollama", "glm", "kimi")
+        if pid_str not in valid_ids:
             raise HTTPException(400, f"unknown provider {pid_str!r}")
+        pid = pid_str  # type: ignore[assignment]
         existing = new_providers.get(pid)
         base = existing.model_dump() if existing else {}
-        base.update({k: v for k, v in p_data.items()})
+        # Remove 'id' from incoming data to avoid duplicate-key error.
+        p_data_clean = {k: v for k, v in p_data.items() if k != "id"}
+        base.update(p_data_clean)
         if not base.get("api_key") and existing:
             base["api_key"] = existing.api_key
-        new_providers[pid] = Provider(**base)
+        base.pop("id", None)
+        new_providers[pid] = Provider(id=pid, **base)
 
     current.providers = new_providers
     if "active_provider" in payload and payload["active_provider"] is not None:
@@ -494,6 +496,90 @@ async def start_investigation(req: StartRequest, authorization: str | None = Hea
     investigation_id = E.new_id("inv")
     asyncio.create_task(_run_goal(goal, investigation_id, req.evidence_path, req.user_prompt))
     return {"investigation_id": investigation_id, "goal_id": req.goal_id}
+
+
+# ---------------------------------------------------------------------------
+# Smart investigation: user describes the incident in natural language,
+# the planner picks the goal + customizes the prompt.
+# ---------------------------------------------------------------------------
+
+
+class SmartRequest(BaseModel):
+    request: str               # user's natural-language description
+    evidence_path: str
+
+
+@app.post("/api/investigations/smart")
+async def smart_investigation(req: SmartRequest, authorization: str | None = Header(None)) -> dict[str, Any]:
+    """Plan + start an investigation from a natural-language request.
+
+    The planner LLM reads the user's description, the available goals, and the
+    scanned evidence types, then returns which goal to run + a refined prompt.
+    The investigation starts immediately after planning.
+    """
+    _check_auth(authorization)
+    from .agent.planner import plan_investigation
+    from .goals.registry import registry
+
+    # Scan the evidence first (so the planner knows what's available)
+    evidence: list[dict] = []
+    try:
+        from .evidence.scanner import scan_folder
+        evidence = await scan_folder(req.evidence_path)
+    except Exception:
+        pass  # planner works without evidence info too
+
+    # Plan
+    plan = await plan_investigation(req.request, evidence)
+
+    # Validate the chosen goal exists
+    goal = registry.get(plan.goal_id)
+    if goal is None:
+        raise HTTPException(500, f"planner selected unknown goal {plan.goal_id}")
+
+    # Start the investigation with the refined prompt
+    investigation_id = E.new_id("inv")
+    asyncio.create_task(_run_goal(goal, investigation_id, req.evidence_path, plan.user_prompt))
+
+    return {
+        "investigation_id": investigation_id,
+        "goal_id": plan.goal_id,
+        "goal_label": goal.label,
+        "user_prompt": plan.user_prompt,
+        "confidence": plan.confidence,
+        "reasoning": plan.reasoning,
+        "suggested_tools": plan.suggested_tools,
+        "evidence_found": len(evidence),
+    }
+
+
+@app.post("/api/investigations/plan")
+async def plan_only(req: SmartRequest, authorization: str | None = Header(None)) -> dict[str, Any]:
+    """Plan WITHOUT starting — returns the suggestion for user confirmation."""
+    _check_auth(authorization)
+    from .agent.planner import plan_investigation
+    from .goals.registry import registry
+
+    evidence: list[dict] = []
+    try:
+        from .evidence.scanner import scan_folder
+        evidence = await scan_folder(req.evidence_path)
+    except Exception:
+        pass
+
+    plan = await plan_investigation(req.request, evidence)
+    goal = registry.get(plan.goal_id)
+
+    return {
+        "goal_id": plan.goal_id,
+        "goal_label": goal.label if goal else "Unknown",
+        "goal_description": goal.description if goal else "",
+        "user_prompt": plan.user_prompt,
+        "confidence": plan.confidence,
+        "reasoning": plan.reasoning,
+        "suggested_tools": plan.suggested_tools,
+        "evidence_found": len(evidence),
+    }
 
 
 class HitlResponseRequest(BaseModel):

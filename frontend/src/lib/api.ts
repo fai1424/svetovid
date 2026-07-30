@@ -81,6 +81,27 @@ export const api = {
       body: JSON.stringify({ goal_id, evidence_path, user_prompt }),
     }),
 
+  planInvestigation: (request: string, evidence_path: string) =>
+    jsonFetch<{
+      goal_id: string;
+      goal_label: string;
+      goal_description: string;
+      user_prompt: string;
+      confidence: number;
+      reasoning: string;
+      suggested_tools: string[];
+      evidence_found: number;
+    }>("/api/investigations/plan", {
+      method: "POST",
+      body: JSON.stringify({ request, evidence_path }),
+    }),
+
+  smartInvestigation: (request: string, evidence_path: string) =>
+    jsonFetch<{ investigation_id: string; goal_id: string; confidence: number }>(
+      "/api/investigations/smart",
+      { method: "POST", body: JSON.stringify({ request, evidence_path }) },
+    ),
+
   // Q3 — Human-in-the-loop approval gate. The Approve button POSTs
   // {"approved": true}, the Reject button POSTs {"approved": false}. The
   // backend resolves the pending Future the goal coroutine is awaiting.
