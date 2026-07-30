@@ -553,8 +553,22 @@ async def _run_goal(goal, investigation_id: str, evidence_path: str, user_prompt
             bus.publish(E.investigation_end(investigation_id, "cancelled", "HITL rejected"))
             await db.finish_investigation(investigation_id, "cancelled", "HITL rejected")
         else:
-            bus.publish(E.investigation_end(investigation_id, "done"))
-            await db.finish_investigation(investigation_id, "done")
+            # D8 FIX: check if the LLM was actually used or the goal fell back.
+            # Goals embed "No LLM provider" or "agent error" markers in the
+            # report when the fallback path is taken. Surface this in the status
+            # so the user knows the agent didn't actually reason.
+            inv = await db.get_investigation(investigation_id)
+            report = (inv or {}).get("report_markdown", "") if inv else ""
+            if "No LLM provider" in report or "agent error" in report:
+                bus.publish(E.investigation_end(
+                    investigation_id, "done_llm_fallback",
+                    "Completed using deterministic fallback (LLM unavailable or failed)"))
+                await db.finish_investigation(
+                    investigation_id, "done_llm_fallback",
+                    "LLM unavailable or failed; deterministic fallback used")
+            else:
+                bus.publish(E.investigation_end(investigation_id, "done"))
+                await db.finish_investigation(investigation_id, "done")
     except Exception as e:
         logger.exception("investigation %s failed", investigation_id)
         bus.publish(E.error_event(investigation_id, str(e), fatal=True))

@@ -72,7 +72,17 @@ async def run_in_sandbox(
     except ImportError as e:
         raise RuntimeError("python 'docker' SDK not installed") from e
 
-    client = docker.from_env()
+    # D3 FIX: from_env() can raise if the daemon socket exists but the daemon
+    # is down (stale socket, OrbStack stopped, etc.). Move it inside the try
+    # so host_fallback can fire instead of crashing.
+    try:
+        client = docker.from_env()
+    except Exception as e:
+        if host_fallback:
+            return await _run_on_host(command, output_dir, investigation_id,
+                                      on_stdout, on_stderr, timeout_s, t0)
+        raise RuntimeError(f"Docker daemon unreachable: {e}") from e
+
     try:
         volumes = {
             os.path.abspath(evidence_path): {"bind": "/evidence", "mode": "ro"},
@@ -141,7 +151,7 @@ async def run_in_sandbox(
             pass
 
         # Stream logs until exit or timeout
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             exit_code = await loop.run_in_executor(
                 None, _stream_logs_blocking, container, on_stdout, on_stderr, timeout_s

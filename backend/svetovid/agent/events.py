@@ -108,6 +108,11 @@ EventType = (
 NodeStatus = Literal["pending", "running", "done", "failed", "skipped"]
 ToolStatus = Literal["running", "ok", "error", "timeout", "cancelled"]
 
+# Investigation end statuses — "done_llm_fallback" distinguishes cases where the
+# agent ran but the LLM provider failed and the deterministic fallback was used
+# (D8 fix: don't claim full success when the agent didn't actually reason).
+InvestigationStatus = Literal["done", "failed", "cancelled", "paused", "done_llm_fallback"]
+
 
 # ---------------------------------------------------------------------------
 # Canonical event model

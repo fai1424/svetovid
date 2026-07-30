@@ -242,6 +242,10 @@ def build_react_graph(
         for tc in tool_calls:
             name = tc.get("name", "?")
             args = tc.get("args", {}) or {}
+
+            # D1 FIX: normalize GLM's kwargs-wrapping so dedup + logging work.
+            if isinstance(args.get("kwargs"), dict):
+                args = args["kwargs"]
             try:
                 key = (name, json.dumps(args, sort_keys=True, default=str))
             except (TypeError, ValueError):
@@ -287,6 +291,13 @@ def build_react_graph(
         for tc in last.tool_calls:
             name = tc.get("name", "")
             args = tc.get("args", {}) or {}
+
+            # D1 FIX: GLM (and some other providers) wrap the real args under
+            # a "kwargs" key instead of passing them at the top level. Normalize
+            # so every tool sees its expected argument names.
+            if isinstance(args.get("kwargs"), dict):
+                args = args["kwargs"]
+
             tool = tool_map.get(name)
             if tool is None:
                 bus.publish(E.error_event(
