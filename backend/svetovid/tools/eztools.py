@@ -90,7 +90,7 @@ class EzTool(Tool):
         out_dir = "/work"
         target = f"/evidence/{sub}"
         cmd = [
-            "dotnet", f"/opt/eztools/{tool_name}/{tool_name}.dll",
+            "/opt/dotnet/dotnet", f"/opt/eztools/{tool_name}/{tool_name}.dll",
             "-f", target,
             "--csv", out_dir,
             "--csvf", f"ez_{tool_name.lower()}_out",  # output filename prefix

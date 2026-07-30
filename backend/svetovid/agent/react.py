@@ -83,22 +83,20 @@ class ReactConfig:
 ERROR_RECOVERY_GUIDANCE = """
 
 ## Tool failure recovery rules (CRITICAL — read these)
+- FIRST ACTION: Always call list_evidence FIRST to see what files exist. \
+Never guess file paths — always list first, then target specific files.
 - If a tool returns an error (exit_code != 0, or an error message), DO NOT \
 retry the same tool with the same arguments. Try a different tool instead.
-- To LIST FILES in the evidence directory: use forensic_keyword_search with \
-query="*". Do NOT use bulk_extractor for listing — bulk_extractor scans \
-binary content, not directory structure.
-- To SEARCH for keywords in files: use forensic_keyword_search (it works on \
-text files). Do NOT use bulk_extractor for keyword search.
-- bulk_extractor is ONLY for scanning raw disk images (E01/.dd/.raw) for \
-embedded features (emails, URLs, credit cards). If the evidence is loose \
-files (not a disk image), do NOT call bulk_extractor.
-- If Docker fails (image not found, daemon error), try forensic_search or \
-mitre_attack which run on the host.
+- To LIST FILES in the evidence directory: use list_evidence (NOT tsk fls, \
+NOT bulk_extractor, NOT forensic_search). list_evidence is the ONLY tool \
+that reliably lists directory contents.
+- To SEARCH for keywords in text files: use forensic_keyword_search.
+- bulk_extractor is ONLY for raw disk images (E01/.dd/.raw). If the evidence \
+is loose files, do NOT call bulk_extractor.
+- tsk fls/mmls are ONLY for disk image files (.E01, .dd, .raw, .001), NOT \
+for loose files or directories.
 - After 2 consecutive tool failures, STOP calling tools and write your \
 report based on whatever information you have gathered so far.
-- The evidence folder may contain subdirectories. Use forensic_keyword_search \
-with an empty query to list the top-level contents first.
 """
 
 
@@ -153,6 +151,15 @@ def build_react_graph(
 
     chat = build_chat(active, streaming=False)
 
+    # Always include list_evidence + mitre_attack as base tools — the agent
+    # MUST be able to see what's in the evidence folder and look up ATT&CK
+    # techniques regardless of which goal-specific tools are added.
+    from ..tools.list_evidence import ListEvidenceTool
+    from ..tools.mitre_attack import MitreAttackTool
+    base_tools = [ListEvidenceTool(), MitreAttackTool()]
+    existing_names = {t.name for t in tools}
+    all_tools = base_tools + [t for t in tools if t.name not in existing_names]
+
     # Convert our Tool wrappers into LangChain BaseTool adapters and prepare
     # the per-call context (sandbox dir, bus, etc.).
     ctx = ToolContext(
@@ -162,7 +169,7 @@ def build_react_graph(
         evidence_path=evidence_path,
         output_dir=output_dir,
     )
-    lc_tools: list[BaseTool] = [SvetovidToolAdapter(t, ctx) for t in tools]
+    lc_tools: list[BaseTool] = [SvetovidToolAdapter(t, ctx) for t in all_tools]
 
     # Bind tools to the chat model. ``parallel=False`` because we want to
     # stream each tool call separately; parallel tool calls confuse the UI
@@ -319,7 +326,7 @@ def build_react_graph(
         if not isinstance(last, AIMessage) or not last.tool_calls:
             return {}
 
-        tool_map: dict[str, Tool] = {t.name: t for t in tools}
+        tool_map: dict[str, Tool] = {t.name: t for t in all_tools}
         out_messages: list[ToolMessage] = []
         for tc in last.tool_calls:
             name = tc.get("name", "")
